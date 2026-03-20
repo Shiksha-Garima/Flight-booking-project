@@ -27,7 +27,7 @@ with DAG(
     gcs_bucket=Variable.get("gcs_bucket", default_var="flight-booking-analysis")
     bq_project=Variable.get("bq_project",default_var="project-3d72aebf-2d6f-4b6c-884")
     bq_dataset=Variable.get("bq_dataset",default_var=f"flight_data_{env}")
-    tables=Variable.get("tables",deserialize=True)
+    tables=Variable.get("tables",deserialize_json=True)
 
     # Extract table names from the 'tables' variable
     transformed_table=tables["transformed_table"]
