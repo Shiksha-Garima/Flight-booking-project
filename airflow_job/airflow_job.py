@@ -42,7 +42,7 @@ with DAG(
     file_sensor=GCSObjectExistenceSensor(
         task_id="check_file_arrival",
         bucket=gcs_bucket,
-        object=f"flight-booking-analysis/source-{env}/flight_booking.csv", # Full file path in GCS
+        object=f"source-{env}/flight_booking.csv", # Full file path in GCS
         google_cloud_conn_id="google_cloud_default",  # GCP Connection
         timeout=600, # Timeout in seconds
         poke_interval=30, # Time between checks
