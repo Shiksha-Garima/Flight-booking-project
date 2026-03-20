@@ -10,8 +10,8 @@ from airflow.utils.dates import days_ago
 default_args={
     'owner':'airflow',
     'depends_on_past':False,
-    'retries':1,
-    'retry_delay':timedelta(minutes=5),
+    'retries':2,
+    'retry_delay':timedelta(minutes=2),
     'start_date':days_ago(1),
 }
 
@@ -44,9 +44,9 @@ with DAG(
         bucket=gcs_bucket,
         object=f"flight-booking-analysis/source-{env}/flight_booking.csv", # Full file path in GCS
         google_cloud_conn_id="google_cloud_default",  # GCP Connection
-        timeout=300, # Timeout in seconds
+        timeout=600, # Timeout in seconds
         poke_interval=30, # Time between checks
-        mode="poke", # Blocking mode it will not free resource
+        mode="reschedule", # Blocking mode it will not free resource
 
     )
 
