@@ -42,7 +42,7 @@ jobs:
         run: |
           gcloud composer environments run airflow-dev \
             --location us-central1 \
-            variables import -- gs://us-central1-airflow-dev-494dee98-bucket/data/dev/variables.json
+            variables import -- /home/airflow/gcs/data/dev/variables.json
 
       # Sync Spark job to GCS
       - name: Upload Spark Job to GCS
@@ -91,7 +91,7 @@ jobs:
         run: |
           gcloud composer environments run airflow-prod \
             --location us-central1 \
-            variables import -- gs://us-central1-airflow-prod-efc77909-bucket/data/prod/variables.json
+            variables import -- /home/airflow/gcs/data/prod/variables.json
 
       # Sync Spark job to GCS
       - name: Upload Spark Job to GCS
