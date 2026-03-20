@@ -6,6 +6,10 @@ on:
       - dev
       - main
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   upload-to-dev:
     if: github.ref == 'refs/heads/dev'
