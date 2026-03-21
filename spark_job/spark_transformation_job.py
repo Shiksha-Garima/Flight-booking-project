@@ -22,7 +22,7 @@ def job_process(env,bq_project,bq_dataset,transformed_table,route_insights_table
         logger.info("Spark session initialized.")
 
         # Resolve GCS path based on the environment
-        input_path=f"gs://flight-booking-analysis/source-{env}"
+        input_path=f"gs://flight-booking-analysis/source-{env}/flight_booking.csv"
         logger.info(f"Input path resolved: {input_path}")
 
         # Read the data from GCS
@@ -38,9 +38,12 @@ def job_process(env,bq_project,bq_dataset,transformed_table,route_insights_table
         ).withColumn(
             "lead_time_category",when(col("purchased_lead")<7, lit("Last-Minute"))
             .when((col("purchased_lead")>=7) & (col("purchased_lead")<30),lit("Short-Term"))
+            .otherwise(lit("Long-Term"))
         ).withColumn(
-            "booking_success_rate",expr("booking_complete / num_passengers")
-        )
+            "booking_success_rate",
+            when(col("num_passengers") != 0,col("booking_complete") / col("num_passengers"))
+            .otherwise(lit(0))
+)
 
         # Aggregations for insights
         route_insights=transformed_data.groupBy("route").agg(
@@ -52,7 +55,7 @@ def job_process(env,bq_project,bq_dataset,transformed_table,route_insights_table
         booking_origin_insights = transformed_data.groupBy("booking_origin").agg(
             count("*").alias("total_bookings"),
             avg("booking_success_rate").alias("success_rate"),
-            avg("purchase_lead").alias("avg_purchase_lead")
+            avg("purchased_lead").alias("avg_purchased_lead")
         )
 
         logger.info("Data transformations completed.")
@@ -89,7 +92,7 @@ def job_process(env,bq_project,bq_dataset,transformed_table,route_insights_table
 
     except Exception as e:
         logger.error(f"An error occured:{e}")
-        sys.exist(1)
+        sys.exit(1)
     
     finally:
         # Stop Spark Session

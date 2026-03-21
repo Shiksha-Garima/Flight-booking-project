@@ -1,8 +1,11 @@
 from datetime import datetime,timedelta
 import uuid # Import UUID for unique batch ids
 from airflow import DAG
-from airflow.providers.google.cloud.operators.dataproc import DataprocCreateBatchOperator
-from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
+from airflow.providers.google.cloud.operators.dataproc import (
+    DataprocCreateClusterOperator,
+    DataprocSubmitJobOperator,
+    DataprocDeleteClusterOperator
+)
 from airflow.models import Variable
 from airflow.utils.dates import days_ago
 
@@ -35,61 +38,73 @@ with DAG(
     route_insights_table=tables["route_insights_table"]
     origin_insights_table=tables["origin_insights_table"]
 
-    # Generate a unique batch id using uuid
-    job_batch_id=f"flight-booking-batch-{env}-{str(uuid.uuid4())[:8]}"
-
-    # Task 1 : File sensor for GCS
-    file_sensor=GCSObjectExistenceSensor(
-        task_id="check_file_arrival",
-        bucket=gcs_bucket,
-        object=f"source-{env}/flight_booking.csv", # Full file path in GCS
-        google_cloud_conn_id="google_cloud_default",  # GCP Connection
-        timeout=600, # Timeout in seconds
-        poke_interval=30, # Time between checks
-        mode="reschedule", # Blocking mode it will not free resource
-
-    )
-
-    # Task 2: Submit Pyspark job to Dataproc Serverless
-    batch_details={
-        "pyspark_batch":{
-            "main_python_file_uri":f"gs://{gcs_bucket}/spark-job/spark_transformation_job.py", # Main python file
-            "python_file_uris":[], # location of Python WHL Files if using
-            "jar_file_uris":[], # location of JAR Files if required
-            "args":[
-                f"--env={env}",
-                f"--bq_project={bq_project}",
-                f"--bq_dataset={bq_dataset}",
-                f"--transformed_table={transformed_table}",
-                f"--route_insights_table={route_insights_table}",
-                f"--origin_insights_table={origin_insights_table}",
-            ]
-        },
-        "runtime_config":{
-            "version":"2.2", # Specify Dataproc version (if needed)
-            "properties": {
-                "spark.executor.instances": "0",   # disable executors
-                "spark.driver.cores": "4"  
-                }
-        },
-        "environment_config":{
-            "execution_config":{
-                "service_account":"841682174554-compute@developer.gserviceaccount.com",
-                "network_uri":f"projects/{bq_project}/global/networks/default",
-                "subnetwork_uri":f"projects/{bq_project}/regions/us-central1/subnetworks/default",
-            }
-        },
+    # Define cluster config
+    CLUSTER_NAME='dataproc-spark-airflow-dev'
+    PROJECT_ID='project-3d72aebf-2d6f-4b6c-884'
+    REGION='us-east1'
+    
+    CLUSTER_CONFIG={
+    'gce_cluster_config': {
+        'zone_uri': 'us-east1-c'
+    },
+    'master_config': {
+        'num_instances': 1,
+        'machine_type_uri': 'e2-medium',
+        'disk_config': {
+            'boot_disk_type': 'pd-standard',
+            'boot_disk_size_gb': 30
+        }
+    },
+    'worker_config': {
+        'num_instances': 0
+    },
+    'software_config': {
+        'image_version': '2.2.26-debian12'
     }
-
-    pyspark_task=DataprocCreateBatchOperator(
-        task_id="run_spark_job_on_dataproc_serverless",
-        batch=batch_details,
-        batch_id=job_batch_id,
-        project_id=bq_project,
-        region="us-central1",
-        gcp_conn_id="google_cloud_default",
+}
+    # Task1
+    create_cluster=DataprocCreateClusterOperator(
+    task_id='create_dataproc_cluster',
+    cluster_name=CLUSTER_NAME,
+    project_id=PROJECT_ID,
+    region=REGION,
+    cluster_config=CLUSTER_CONFIG,
+    )
+    
+    pyspark_job = {
+    "reference": {"project_id": PROJECT_ID},
+    "placement": {"cluster_name": CLUSTER_NAME},
+    "pyspark_job": {
+        "main_python_file_uri": f"gs://{gcs_bucket}/spark-job/spark_transformation_job.py",
+        "args": [
+            f"--env={env}",
+            f"--bq_project={bq_project}",
+            f"--bq_dataset={bq_dataset}",
+            f"--transformed_table={transformed_table}",
+            f"--route_insights_table={route_insights_table}",
+            f"--origin_insights_table={origin_insights_table}",
+        ],
+    },
+}
+    
+    # Task 2
+    submit_pyspark_job = DataprocSubmitJobOperator(
+    task_id="submit_pyspark_job_on_dataproc",
+    job=pyspark_job,
+    region="us-east1",
+    project_id=PROJECT_ID,
+    gcp_conn_id="google_cloud_default",
     )
 
-    # Task Dependencies
-    file_sensor >> pyspark_task
+    # Task3
+    delete_cluster=DataprocDeleteClusterOperator(
+    task_id='delete_dataproc_cluster',
+    project_id=PROJECT_ID,
+    cluster_name=CLUSTER_NAME,
+    region=REGION,
+    trigger_rule='all_done',  # ensures cluster deletion even if spark job fails
+    dag=dag,
+    )   
 
+
+    create_cluster >> submit_pyspark_job >> delete_cluster
