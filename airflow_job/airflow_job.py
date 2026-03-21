@@ -6,6 +6,7 @@ from airflow.providers.google.cloud.operators.dataproc import (
     DataprocSubmitJobOperator,
     DataprocDeleteClusterOperator
 )
+from airflow.providers.google.cloud.sensors.gcs import GCSObjectExistenceSensor
 from airflow.models import Variable
 from airflow.utils.dates import days_ago
 
@@ -15,14 +16,14 @@ default_args={
     'depends_on_past':False,
     'retries':2,
     'retry_delay':timedelta(minutes=2),
-    'start_date':days_ago(1),
+    'start_date':datetime(2026,3,21),
 }
 
 # Define the DAG
 with DAG(
     dag_id="flight_booking_dataproc_bq_dag",
     default_args=default_args,
-    schedule_interval=None, #Trigger manually or on-demand
+    schedule_interval='@daily', #Trigger manually or on-demand
     catchup=False,
 ) as dag:
     
@@ -62,13 +63,25 @@ with DAG(
         'image_version': '2.2.26-debian12'
     }
 }
-    # Task1
+    # Task 1
+
+    file_sensor = GCSObjectExistenceSensor(
+    task_id="check_file_arrival",
+    bucket=gcs_bucket,
+    object=f"source-{env}/flight_booking.csv",  # correct path
+    google_cloud_conn_id="google_cloud_default",
+    timeout=600,
+    poke_interval=30,
+    mode="reschedule",
+)
+    # Task 2
     create_cluster=DataprocCreateClusterOperator(
     task_id='create_dataproc_cluster',
     cluster_name=CLUSTER_NAME,
     project_id=PROJECT_ID,
     region=REGION,
     cluster_config=CLUSTER_CONFIG,
+    gcp_conn_id="google_cloud_default",
     )
     
     pyspark_job = {
@@ -87,7 +100,7 @@ with DAG(
     },
 }
     
-    # Task 2
+    # Task 3
     submit_pyspark_job = DataprocSubmitJobOperator(
     task_id="submit_pyspark_job_on_dataproc",
     job=pyspark_job,
@@ -96,15 +109,14 @@ with DAG(
     gcp_conn_id="google_cloud_default",
     )
 
-    # Task3
+    # Task 4
     delete_cluster=DataprocDeleteClusterOperator(
     task_id='delete_dataproc_cluster',
     project_id=PROJECT_ID,
     cluster_name=CLUSTER_NAME,
     region=REGION,
-    trigger_rule='all_done',  # ensures cluster deletion even if spark job fails
-    dag=dag,
+    trigger_rule='all_done', # ensures cluster deletion even if spark job fails
     )   
 
 
-    create_cluster >> submit_pyspark_job >> delete_cluster
+    file_sensor >> create_cluster >> submit_pyspark_job >> delete_cluster
