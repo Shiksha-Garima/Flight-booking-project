@@ -26,7 +26,7 @@ def job_process(env,bq_project,bq_dataset,transformed_table,route_insights_table
         logger.info(f"Input path resolved: {input_path}")
 
         # Read the data from GCS
-        data=spark.read.csv(input_path,header=True,inferSchema=True)
+        data=spark.read.csv(input_path,header=True,inferSchema=True).limit(10000)
         logger.info("Data read from GCS.")
 
         # Data Transformation
