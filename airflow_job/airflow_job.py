@@ -50,7 +50,7 @@ with DAG(
     },
     'master_config': {
         'num_instances': 1,
-        'machine_type_uri': 'e2-medium',
+        'machine_type_uri': 'e2-standard-4',
         'disk_config': {
             'boot_disk_type': 'pd-standard',
             'boot_disk_size_gb': 30
